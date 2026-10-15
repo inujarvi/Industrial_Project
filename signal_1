@@ -1,0 +1,58 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+def load_and_downsample_signal(file_path, target_points=10000, chunk_size=500000):
+    sampling_rate = 50000  # 50,000 samples per second
+    chunks_sensor1 = []
+    chunks_sensor2 = []
+    total_rows = 0
+
+    print(f"Reading file: {file_path}...")
+    # Use dtype=float and errors='coerce' to turn text/headers safely into NaN, then drop them
+    for chunk in pd.read_csv(file_path, header=None, chunksize=chunk_size, low_memory=False):
+        # Convert columns to numeric, turning any non-numeric strings into NaN
+        col0 = pd.to_numeric(chunk.iloc[:, 0], errors='coerce')
+        col1 = pd.to_numeric(chunk.iloc[:, 1], errors='coerce')
+        
+        # Drop rows where values couldn't be converted (like text headers)
+        valid_data = pd.DataFrame({'s1': col0, 's2': col1}).dropna()
+        
+        if len(valid_data) > 0:
+            chunks_sensor1.append(valid_data['s1'].values)
+            chunks_sensor2.append(valid_data['s2'].values)
+            total_rows += len(valid_data)
+
+    # Concatenate chunks into efficient numpy arrays
+    signal_s1 = np.concatenate(chunks_sensor1)
+    signal_s2 = np.concatenate(chunks_sensor2)
+    
+    # Create the time axis
+    time_axis = np.arange(total_rows) / sampling_rate
+    print(f"Total valid samples: {total_rows} ({time_axis[-1]:.2f} seconds)")
+
+    # Downsample if the array is too large for fast plotting
+    if total_rows > target_points:
+        step = total_rows // target_points
+        trimmed_len = total_rows - (total_rows % step) 
+        
+        t_trimmed = time_axis[:trimmed_len].reshape(-1, step).mean(axis=1)
+        s1_trimmed = signal_s1[:trimmed_len].reshape(-1, step).mean(axis=1)
+        s2_trimmed = signal_s2[:trimmed_len].reshape(-1, step).mean(axis=1)
+        
+        return t_trimmed, s1_trimmed, s2_trimmed
+    
+    return time_axis, signal_s1, signal_s2
+
+# --- Execution ---
+file_path = 'signal_1.csv' 
+t, s1, s2 = load_and_downsample_signal(file_path)
+
+plt.figure(figsize=(12, 5))
+plt.plot(t, s1, label='Sensor 1', alpha=0.8)
+plt.plot(t, s2, label='Sensor 2', alpha=0.8)
+plt.xlabel('Time (s)')
+plt.ylabel('Amplitude')
+plt.title('Overview of Signal (Downsampled)') 
+plt.legend()
+plt.show()
